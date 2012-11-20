@@ -9,33 +9,70 @@ from twisted.python import log
 from twisted.words.protocols import irc
 from twisted.application import internet, service
 from random import randrange
-
+#Constants
 def dice(num, sides):
     return sum(randrange(sides)+1 for die in range(num))
 optables={'+':operator.add,'-':operator.sub,'*':operator.mul,"/":operator.div,"":None}
 opregex=re.compile('[+|-|*|/]')
+nickname_pattern = re.compile('^[a-zA-Z][a-zA-Z ]*$')
+CHAT, ACTION, SYSTEM_ACTION = xrange(3)
+def color(string, color):
+    return '\003%s %s \017 ' % (color,string)
+#Colors
+WHITE = 0
+BLACK = 1
+BLUE = 2
+GREEN = 3
+RED = 4
+BROWN = 5
+PURPLE = 6
+ORANGE = 7
+YELLOW = 8
+LIGHTGREEN = 9
+CYAN = 10
+LIGHTCYAN = 11
+LIGHTBLUE = 12
+PINK = 13
+GREY = 14
+LIGHTGREY = 15 
+
+BOLD = 002,
+INVERSE = 026,
+UNDERLINE = 037
+
+DEFAULT_COLOR = 017,
 #Vars
 nickToUse="MyBot"
 specialSymbol=","
 HOST, PORT = 'irc.freenode.net', 6667
 
+
 class BotProtocol(irc.IRCClient):
 	nickname = nickToUse
-
 	def signedOn(self):
 		#join channels listed on signon
 		for channel in self.factory.channels:
 			self.join(channel)
 
+
+
 	def privmsg(self, user, channel, message):
 		nick, loool, host = user.partition('!')
 		message = message.strip()
+		def FuncOut(functiontouse,*args):
+			# Add callbacks to deal with whatever the command results are.
+			# maybeDeferred will always return a Deferred.
+			d= defer.maybeDeferred(functiontouse,*args)
+			if ispriv:
+				d.addCallback(self._send_message,nick)
+			else:
+				d.addCallback(self._send_message,channel,nick)
 		#use V to set command symbol
 		if not message.startswith(specialSymbol):
 			return #we don't care for this
 		command, sep, rest = message.lstrip(specialSymbol).partition(' ')
-		#check beforehand if msg is channel or not
-		ispriv=0
+		#check beforehand if msg is channel or not When channel == self.nickname, the message was sent to the bot
+		ispriv = 0
 		if channel == self.nickname:
 			ispriv = 1
 		# Get the function corresponding to the command given.
@@ -44,53 +81,52 @@ class BotProtocol(irc.IRCClient):
 		if func is None:
 			try:
 				func=getattr(self,'do_roll',None)
-				d = defer.maybeDeferred(func, command)
-				if ispriv:
-					d.addCallback(self._send_message, nick)
-				else:
-					d.addCallback(self._send_message, channel, nick)
+				FuncOut(func,command)
 				return
 			except:
 				return
-		# maybeDeferred will always return a Deferred. It calls func(rest), and
-		# if that returned a Deferred, return that. Otherwise, return the return
-		# value of the function wrapped in twisted.internet.defer.succeed. If
-		# an exception was raised, wrap the traceback in
-		# twisted.internet.defer.fail and return that.
-		d = defer.maybeDeferred(func, rest)
-		# Add callbacks to deal with whatever the command results are.
-		# If the command gives error, the _show_error callback will turn the 
-		# error into a terse message first:
-		d.addErrback(self._show_error)
-		# Whatever is returned is sent back as a reply:
-		if ispriv:
-			# When channel == self.nickname, the message was sent to the bot
-			# directly and not to a channel. So we will answer directly too:
-			d.addCallback(self._send_message, nick)
-		else:
-			# Otherwise, send the answer to the channel, and use the nick
-			# as addressing in the message itself:
-			d.addCallback(self._send_message, channel, nick)
-	def _send_message(self, msg, target, nick=None):
-		if nick:
-					 msg = '%s, %s' % (nick, msg)
-		self.msg(target, msg)
+		
+		FuncOut(func,rest)
+		
 
+	def _send_message(self, msgval, target, nick=None):
+		msg=0
+		if nick:
+			msg = '%s, %s' % (nick, msgval[0])
+		else:
+			msg=msgval[0]
+		if msgval[1]==0:
+			self.msg_other(target,msg)
+		elif msgval[1]==1:
+			self.msg_info(target,msg)
+		elif msgval[1]==2:
+			self.msg_err(target,msg)
+		else:
+			self.msg_other(target,msg,msgval[1])
+	def msg_err(self, target,msg):
+		self.msg(target,color('*** %s' % msg, RED))
+	def msg_info(self,target, msg):
+		self.msg(target,color('=== %s' % msg, YELLOW))
+	def msg_other(self,target, msg, color_t=None):
+		if color_t is not None:
+			self.msg(target,color(msg, color_t))
+		else:
+			self.msg(target,msg)
 	def _show_error(self, failure):
 		return failure.getErrorMessage()
 
 	def do_ping(self, rest):
-		return 'Pong.'
+		return ('Pong.',0)
 	def do_roll(self, rest):
 		try:
 			q=rest.partition("d")
 			if opregex.search(q[2]):
 				dicefaces, extraop, val=q[2].partition(opregex.search(q[2]).group())
 				z=optables.get(extraop)(dice(int(q[0]),int(dicefaces)),int(val))
-				return z
-			return dice(int(q[0]),int(q[2]))
+				return (z,1)
+			return (dice(int(q[0]),int(q[2])),1)
 		except:
-			return "That ain't a polite dice roll"
+			return ("That ain't a polite dice roll",2)
 	def do_dhroll(self,rest):
 		try:
 			z=rest.split(" ")
@@ -106,14 +142,21 @@ class BotProtocol(irc.IRCClient):
 				TN=int(z[1])
 				Diff = TN- total
 				DoSF = math.floor(Diff/10)
-				if Diff >= 0:
-					return "Test passed by "+str(DoSF)+" DoS"
-				else:
-					return "Test failed by "+str(DoSF)+" DoF"
+				try:
+					if z[2]:
+						pass
+
+					
+				except IndexError:
+					if Diff >= 0:
+						return ("Test passed by "+str(DoSF)+" DoS",1)
+					else:
+						return ("Test failed by "+str(DoSF)+" DoF",1)
+				
 			else:
-				return total
+				return (total,1)
 		except:
-			return "That dhroll was invalid"
+			return ("That dhroll was invalid",2)
 
 	def do_saylater(self, rest):
 		when, sep, msg = rest.partition(' ')
