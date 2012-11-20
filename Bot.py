@@ -5,32 +5,48 @@ from twisted.internet import reactor, task, defer, protocol
 from twisted.python import log
 from twisted.words.protocols import irc
 from twisted.application import internet, service
+from random import randrange
 
-
+def dice(num, sides):
+    return sum(randrange(sides)+1 for die in range(num))
 #Vars
 nickToUse="MyBot"
 specialSymbol=","
 HOST, PORT = 'irc.freenode.net', 6667
+
 class BotProtocol(irc.IRCClient):
 	nickname = nickToUse
 
-	def chanjoin(self):
+	def signedOn(self):
 		#join channels listed on signon
 		for channel in self.factory.channels:
 			self.join(channel)
 
 	def privmsg(self, user, channel, message):
-		nick, host = user.partition('!')
+		nick, loool, host = user.partition('!')
 		message = message.strip()
 		#use V to set command symbol
 		if not message.startswith(specialSymbol):
 			return #we don't care for this
 		command, sep, rest = message.lstrip(specialSymbol).partition(' ')
+		#check beforehand if msg is channel or not
+		ispriv=0
+		if channel == self.nickname:
+			ispriv = 1
 		# Get the function corresponding to the command given.
 		func = getattr(self, 'do_' + command, None)
 		# Or, if there was no function, ignore the message.
 		if func is None:
-			return None
+			try:
+				func=getattr(self,'do_roll',None)
+				d = defer.maybeDeferred(func, command)
+				if ispriv:
+					d.addCallback(self._send_message, nick)
+				else:
+					d.addCallback(self._send_message, channel, nick)
+				return
+			except:
+				return
 		# maybeDeferred will always return a Deferred. It calls func(rest), and
 		# if that returned a Deferred, return that. Otherwise, return the return
 		# value of the function wrapped in twisted.internet.defer.succeed. If
@@ -42,7 +58,7 @@ class BotProtocol(irc.IRCClient):
 		# error into a terse message first:
 		d.addErrback(self._show_error)
 		# Whatever is returned is sent back as a reply:
-		if channel == self.nickname:
+		if ispriv:
 			# When channel == self.nickname, the message was sent to the bot
 			# directly and not to a channel. So we will answer directly too:
 			d.addCallback(self._send_message, nick)
@@ -60,7 +76,9 @@ class BotProtocol(irc.IRCClient):
 
 	def do_ping(self, rest):
 		return 'Pong.'
-
+	def do_roll(self, rest):
+		q=rest.partition("d")
+		return dice(int(q[0]),int(q[2]))
 	def do_saylater(self, rest):
 		when, sep, msg = rest.partition(' ')
 		when = int(when)
@@ -74,7 +92,7 @@ class BotProtocol(irc.IRCClient):
 
 class MyFirstIRCFactory(protocol.ReconnectingClientFactory):
 	protocol = BotProtocol
-	channels = ['#darkf']
+	channels = ['##MyFirstIrcBot,#darkf']
 
 if __name__ == '__main__':
 	# This runs the program in the foreground. We tell the reactor to connect
