@@ -3,6 +3,7 @@
 import sys
 import operator
 import re
+import math
 from twisted.internet import reactor, task, defer, protocol
 from twisted.python import log
 from twisted.words.protocols import irc
@@ -90,6 +91,30 @@ class BotProtocol(irc.IRCClient):
 			return dice(int(q[0]),int(q[2]))
 		except:
 			return "That ain't a polite dice roll"
+	def do_dhroll(self,rest):
+		try:
+			z=rest.split(" ")
+			q=z[0].partition("d")
+			# V catches a trailing +,-,*,/ and handles it.
+			if opregex.search(q[2]):
+				dicefaces, extraop, val=q[2].partition(opregex.search(q[2]).group())
+				total=optables.get(extraop)(dice(int(q[0]),int(dicefaces)),int(val))
+			else:
+				total=dice(int(q[0]),int(q[2]))
+			if re.match("\d+",z[1]):
+				# this is where all the stuff you wanted to implement will go
+				TN=int(z[1])
+				Diff = TN- total
+				DoSF = math.floor(Diff/10)
+				if Diff >= 0:
+					return "Test passed by "+str(DoSF)+" DoS"
+				else:
+					reutnr "Test failed by "+str(DoSF)+" DoF"
+			else:
+				return total
+		except:
+			return "That dhroll was invalid"
+
 	def do_saylater(self, rest):
 		when, sep, msg = rest.partition(' ')
 		when = int(when)
