@@ -1,6 +1,8 @@
 #lesse now, how does one make an irc bot again?
 #test
 import sys
+import operator
+import re
 from twisted.internet import reactor, task, defer, protocol
 from twisted.python import log
 from twisted.words.protocols import irc
@@ -9,6 +11,8 @@ from random import randrange
 
 def dice(num, sides):
     return sum(randrange(sides)+1 for die in range(num))
+optables={'+':operator.add,'-':operator.sub,'*':operator.mul,"/":operator.div,"":None}
+opregex=re.compile('[+|-|*|/]')
 #Vars
 nickToUse="MyBot"
 specialSymbol=","
@@ -77,8 +81,15 @@ class BotProtocol(irc.IRCClient):
 	def do_ping(self, rest):
 		return 'Pong.'
 	def do_roll(self, rest):
-		q=rest.partition("d")
-		return dice(int(q[0]),int(q[2]))
+		try:
+			q=rest.partition("d")
+			if opregex.search(q[2]):
+				dicefaces, extraop, val=q[2].partition(opregex.search(q[2]).group())
+				z=optables.get(extraop)(dice(int(q[0]),int(dicefaces)),int(val))
+				return z
+			return dice(int(q[0]),int(q[2]))
+		except:
+			return "That ain't a polite dice roll"
 	def do_saylater(self, rest):
 		when, sep, msg = rest.partition(' ')
 		when = int(when)
