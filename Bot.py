@@ -109,7 +109,7 @@ class BotProtocol(irc.IRCClient):
 				if Diff >= 0:
 					return "Test passed by "+str(DoSF)+" DoS"
 				else:
-					reutnr "Test failed by "+str(DoSF)+" DoF"
+					return "Test failed by "+str(DoSF)+" DoF"
 			else:
 				return total
 		except:
