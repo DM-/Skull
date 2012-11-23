@@ -14,6 +14,7 @@ def dice(num, sides):
     return sum(randrange(sides)+1 for die in range(num))
 optables={'+':operator.add,'-':operator.sub,'*':operator.mul,"/":operator.div,"":None}
 opregex=re.compile('[+|-|*|/]')
+diceroll=re.compile("\d+d\d+.*")
 nickname_pattern = re.compile('^[a-zA-Z][a-zA-Z ]*$')
 CHAT, ACTION, SYSTEM_ACTION = xrange(3)
 def color(string, color):
@@ -54,8 +55,6 @@ class BotProtocol(irc.IRCClient):
 		for channel in self.factory.channels:
 			self.join(channel)
 
-
-
 	def privmsg(self, user, channel, message):
 		nick, loool, host = user.partition('!')
 		message = message.strip()
@@ -79,13 +78,12 @@ class BotProtocol(irc.IRCClient):
 		func = getattr(self, 'do_' + command, None)
 		# Or, if there was no function, ignore the message.
 		if func is None:
-			try:
+			if diceroll.match(command):
 				func=getattr(self,'do_roll',None)
 				FuncOut(func,command)
 				return
-			except:
+			else:
 				return
-		
 		FuncOut(func,rest)
 		
 
@@ -101,12 +99,14 @@ class BotProtocol(irc.IRCClient):
 			self.msg_info(target,msg)
 		elif msgval[1]==2:
 			self.msg_err(target,msg)
+		elif msgval[1]==3:
+			self.describe(target,msgval[0])
 		else:
 			self.msg_other(target,msg,msgval[1])
 	def msg_err(self, target,msg):
-		self.msg(target,color('*** %s' % msg, RED))
+		self.msg(target,color('*** %s ***' % msg, RED))
 	def msg_info(self,target, msg):
-		self.msg(target,color('=== %s' % msg, YELLOW))
+		self.msg(target,color('%s' % msg, YELLOW))
 	def msg_other(self,target, msg, color_t=None):
 		if color_t is not None:
 			self.msg(target,color(msg, color_t))
@@ -114,7 +114,8 @@ class BotProtocol(irc.IRCClient):
 			self.msg(target,msg)
 	def _show_error(self, failure):
 		return failure.getErrorMessage()
-
+	def do_dance(self,whatevers):
+		return ("dances",3)
 	def do_ping(self, rest):
 		return ('Pong.',0)
 	def do_roll(self, rest):
@@ -124,7 +125,8 @@ class BotProtocol(irc.IRCClient):
 				dicefaces, extraop, val=q[2].partition(opregex.search(q[2]).group())
 				z=optables.get(extraop)(dice(int(q[0]),int(dicefaces)),int(val))
 				return (z,1)
-			return (dice(int(q[0]),int(q[2])),1)
+			else:
+				return (dice(int(q[0]),int(q[2])),1)
 		except:
 			return ("That ain't a polite dice roll",2)
 	def do_dhroll(self,rest):
