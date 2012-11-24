@@ -1,9 +1,9 @@
 #lesse now, how does one make an irc bot again?
 #test
 import sys
-import operator
 import re
 import math
+from Calc import Calc
 from twisted.internet import reactor, task, defer, protocol
 from twisted.python import log
 from twisted.words.protocols import irc
@@ -12,8 +12,6 @@ from random import randrange
 #Constants
 def dice(num, sides):
     return sum(randrange(sides)+1 for die in range(num))
-optables={'+':operator.add,'-':operator.sub,'*':operator.mul,"/":operator.div,"":None}
-opregex=re.compile('[+|-|*|/]')
 diceroll=re.compile("\d+d\d+.*")
 nickname_pattern = re.compile('^[a-zA-Z][a-zA-Z ]*$')
 CHAT, ACTION, SYSTEM_ACTION = xrange(3)
@@ -46,8 +44,38 @@ DEFAULT_COLOR = 017,
 nickToUse="MyBot"
 specialSymbol=","
 HOST, PORT = 'irc.freenode.net', 6667
-
-
+# sideways implementations of a regex dict
+def InRegDict(dic,test):
+	for i in dic:
+		if i.match(test):
+			return True
+	return False
+def GetRegDict(dic,test):
+	for i in dic:
+		if i.match(test):
+			return dic[i]
+	False
+#remember to add a function for locaion
+def ModDoSF(test,adj,DoSF):
+	#what we're gonna return
+	val=''
+	for i in adj:
+		# DHAdj must be a regdict, DHAdj stands for DH adjective. adj stands for adjective. Because of problems in dict, need to use has_key and get
+		if InRegDict(DHAdj,i):
+			val.append(GetRegDict(DHAdj,i)(i,test,DoSF))
+	return (val,DoSf)
+DHAdj1=[re.compile(x, re.I) for x in ["dark(ness)?","Diff[a-z]*Terrain","Wors[et]?Terrain","Shoot[a-b]*Melee","ExtremeRange","Fatigue[d]*","Fog","(2|(two))to(1|(one))","(3|(three))to(1|(one))","Helpless","High(er)?ground","LongRange","PointBlank","ShortRange","Stun(n)?(ed)?Target","UnawareTarget","Weather1","Weather2" ]]
+DHAdj2=[re.compile(x, re.I) for x in []]
+DHAdj=dict(zip(DHAdj1,DHAdj2))
+def ModDif(test,adj,Diff):
+	d=Diff
+	for i in adj:
+		if InRegDict(DHDiff,i):
+			d+=GetRegDict(DHDiff,i)(i,test,Diff)
+	return d
+DHDiff1=[""]
+DHDiff2=
+DHDiff
 class BotProtocol(irc.IRCClient):
 	nickname = nickToUse
 	def signedOn(self):
@@ -76,7 +104,7 @@ class BotProtocol(irc.IRCClient):
 			ispriv = 1
 		# Get the function corresponding to the command given.
 		func = getattr(self, 'do_' + command, None)
-		# Or, if there was no function, ignore the message.
+		# Or, if there was no function, try and catch innate functions.
 		if func is None:
 			if diceroll.match(command):
 				func=getattr(self,'do_roll',None)
@@ -112,52 +140,67 @@ class BotProtocol(irc.IRCClient):
 			self.msg(target,color(msg, color_t))
 		else:
 			self.msg(target,msg)
-	def _show_error(self, failure):
-		return failure.getErrorMessage()
 	def do_dance(self,whatevers):
 		return ("dances",3)
 	def do_ping(self, rest):
 		return ('Pong.',0)
 	def do_roll(self, rest):
 		try:
-			q=rest.partition("d")
-			if opregex.search(q[2]):
-				dicefaces, extraop, val=q[2].partition(opregex.search(q[2]).group())
-				z=optables.get(extraop)(dice(int(q[0]),int(dicefaces)),int(val))
-				return (z,1)
-			else:
-				return (dice(int(q[0]),int(q[2])),1)
+			return(Calc(rest))
 		except:
 			return ("That ain't a polite dice roll",2)
+	# sanity check, currently useless. returning 0 means sane. ie. not insane
+	def insane(self,version,rest):
+		return 0
 	def do_dhroll(self,rest):
 		try:
 			z=rest.split(" ")
-			q=z[0].partition("d")
-			# V catches a trailing +,-,*,/ and handles it.
-			if opregex.search(q[2]):
-				dicefaces, extraop, val=q[2].partition(opregex.search(q[2]).group())
-				total=optables.get(extraop)(dice(int(q[0]),int(dicefaces)),int(val))
-			else:
-				total=dice(int(q[0]),int(q[2]))
+			#why are we using z.pop below? to standardize the output of course!
+			#if the second number is a number, it's probably input like ,dhroll (dice) (tn)
 			if re.match("\d+",z[1]):
-				# this is where all the stuff you wanted to implement will go
-				TN=int(z[1])
-				Diff = TN- total
-				DoSF = math.floor(Diff/10)
-				try:
-					if z[2]:
-						pass
+				# this is the target number , for stuff like 1d100 80 and such.
+				TN=int(z.pop(1))
+				# and the one before it is the dice roll
+				total=Calc(z.pop(0))
+			# if it ain't, then maybe it was assumed dice=1d100 and given as ,dhroll (tn)
+			elif re.match("\d+",z[0]):
+				#cause of format, tn will be first argument
+				TN=int(z.pop(0))
+				#default diceroll
+				total=Calc("1d100")
+			else :
+				#fuck you , no dice and no tn what am I supposed to do.
+				raise StandardError
+			#if there's only one thing more, it's either the skill or additives. Functions that take additives as args
+			# are supposed to ignore anything they don't recognize, not break on it so we're safe.
+			if z[-1]=z[0]:
+				additives=z[:]
+			#otherwise we've got both
+			elif z[-1]=z[2]:
+				test=z[0]
+				additives=z[1:]
+			# sanity check the fucker, currently does nothing but does stop the code from running
+			if insane("dh",test,additives):
+				return "That's insane"+insane("dh",test,additives)
+			#difference between rolled and TN
+			Diff = ModDif(test,additives,TN- total)
+			#degrees of sucess and failure
+			DoSF = ModDoSF(test,additives,math.floor(Diff/10))
+			#extra is where you add anything you want to add
+			Extra=ModExtra(test,additives,DoSF)
 
-					
-				except IndexError:
-					if Diff >= 0:
-						return ("Test passed by "+str(DoSF)+" DoS",1)
-					else:
-						return ("Test failed by "+str(DoSF)+" DoF",1)
+
+				#change this, maybe add a formatter function and remember to have it somehow show what was actually rolled so you can make sure it didn't fuck up
+				if Diff >= 0:
+					return ("Test passed by "+str(DoSF)+" DoS"+extra,1)
+				else:
+					return ("Test failed by "+str(DoSF)+" DoF"+extra,1)
 				
 			else:
 				return (total,1)
-		except:
+		except IndexError :
+			return ("something's mising...,",2)
+		except :
 			return ("That dhroll was invalid",2)
 
 	def do_saylater(self, rest):
